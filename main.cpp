@@ -6,7 +6,7 @@
 #include <sstream>
 #include <filesystem>
 #include <iostream>
-
+#pragma once
 
 // Define a Color struct to hold the RGB values of a pixel
 struct Color {
@@ -18,6 +18,21 @@ struct Color {
 
 struct Face {
     std::vector<std::array<int, 3>> vertexIndices;
+};
+
+struct Fragment {
+    glm::ivec2 position; // X and Y coordinates of the pixel (in screen space)
+    // Other interpolated attributes (e.g., color, texture coordinates, normals) can be added here
+
+    Fragment() : position(glm::ivec2(0, 0)) {}
+    Fragment(int x, int y) : position(glm::ivec2(x, y)) {}
+    Fragment(const glm::ivec2& pos) : position(pos) {}
+};
+
+struct Uniforms {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 projection;
 };
 
 std::string getCurrentPath() {
@@ -84,21 +99,36 @@ void line(glm::vec3 start, glm::vec3 end) {
     }
 }
 
-void render() {
-    // Draw a point
-    for (int i = 0; i < 100; i++) {
-        for (int j = 0; j < 100; j++) {
-            point(i, j);
-        }
-    }
-
-    // Render the framebuffer to the screen
-}
-
 void triangle(const glm::vec3& A, const glm::vec3& B, const glm::vec3& C) {
     line(A, B);
     line(B, C);
     line(C, A);
+}
+
+void render(const std::vector<glm::vec3>& vertices, const Uniforms& uniforms) {
+    // 1. Vertex Shader
+    std::vector<Fragment> fragments;
+    for (const auto& vertex : vertices) {
+        // Aquí aplicamos la transformación del vértice utilizando los uniforms
+        // Por ahora, simplemente agregamos el vértice a los fragmentos para su posterior procesamiento
+        fragments.push_back(Fragment(vertex));
+    }
+
+    // 2. Primitive Assembly
+    // Por ahora, como estamos trabajando con triángulos, no es necesario hacer nada aquí,
+    // ya que los triángulos están formados por tres vértices y ya tenemos los fragmentos correspondientes.
+
+    // 3. Rasterization
+    // En este paso, normalmente se convierten los triángulos a píxeles en la pantalla,
+    // pero como ya tenemos los fragmentos, no es necesario hacer nada aquí por ahora.
+
+    // 4. Fragment Shader
+    // Aquí aplicamos el fragment shader para procesar los fragmentos y determinar el color de cada píxel.
+    // Como por ahora solo tenemos la posición del fragmento, simplemente pintamos los píxeles en el framebuffer.
+
+    for (const auto& fragment : fragments) {
+        point(fragment.position.x, fragment.position.y);
+    }
 }
 
 // Función para leer el archivo .obj y cargar los vértices y caras
@@ -168,39 +198,26 @@ std::vector<glm::vec3> setupVertexArray(const std::vector<glm::vec3>& vertices, 
     return vertexArray;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char* argv[]) {
     init();
+
+    std::vector<glm::vec3> vertices = {
+            {300.0f, 200.0f, 0.0f},
+            {400.0f, 400.0f, 0.0f},
+            {500.0f, 200.0f, 0.0f}
+    };
+
+    Uniforms uniforms;
+
+    glm::mat4 model = glm::mat4(1);
+    glm::mat4 view = glm::mat4(1);
+    glm::mat4 projection = glm::mat4(1);
+
+    uniforms.model = model;
+    uniforms.view = view;
+    uniforms.projection = projection;
+
     bool running = true;
-
-    // Cargamos el archivo OBJ y obtenemos los vértices y caras
-    std::vector<glm::vec3> vertices;
-    std::vector<Face> faces;
-    std::string currentPath = getCurrentPath();
-    std::string fileName = "naveLab3.obj";
-    std::string filePath = getParentDirectory(currentPath) + "\\" + fileName;
-
-    bool success = loadOBJ(filePath, vertices, faces);
-
-    if (!success) {
-        std::cout << "La carga del archivo OBJ falló." << std::endl;
-        return 1;
-    }
-
-    // Modificamos los valores para que se vea bien la escala y que se vea centrado
-    for (auto& vertex : vertices) {
-        vertex.x *= 20;
-        vertex.y *= 20;
-        vertex.z *= 20;
-
-        vertex.x += 320;
-        vertex.y += 200;
-        vertex.z += 200;
-    }
-
-
-    // Obtenemos el array de vértices que contiene las posiciones de todos los vértices de todas las caras
-    std::vector<glm::vec3> vertexArray = setupVertexArray(vertices, faces);
-
     while (running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -209,13 +226,10 @@ int main(int argc, char** argv) {
             }
         }
 
-        clear();
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
 
-        // Dibujamos el modelo 3D utilizando los vértices del vertexArray
-        setColor({255, 255, 255, 255}); // Set color to white
-        for (size_t i = 0; i < vertexArray.size(); i += 3) {
-            triangle(vertexArray[i], vertexArray[i + 1], vertexArray[i + 2]);
-        }
+        render(vertices, uniforms);
 
         SDL_RenderPresent(renderer);
     }
