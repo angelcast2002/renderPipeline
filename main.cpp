@@ -7,33 +7,8 @@
 #include <filesystem>
 #include <iostream>
 #pragma once
-
-// Define a Color struct to hold the RGB values of a pixel
-struct Color {
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-    uint8_t a;
-};
-
-struct Face {
-    std::vector<std::array<int, 3>> vertexIndices;
-};
-
-struct Fragment {
-    glm::ivec2 position; // X and Y coordinates of the pixel (in screen space)
-    // Other interpolated attributes (e.g., color, texture coordinates, normals) can be added here
-
-    Fragment() : position(glm::ivec2(0, 0)) {}
-    Fragment(int x, int y) : position(glm::ivec2(x, y)) {}
-    Fragment(const glm::ivec2& pos) : position(pos) {}
-};
-
-struct Uniforms {
-    glm::mat4 model;
-    glm::mat4 view;
-    glm::mat4 projection;
-};
+#include "shaders.hpp"
+#include "glm/gtc/matrix_transform.hpp"
 
 std::string getCurrentPath() {
     return std::filesystem::current_path().string();
@@ -99,36 +74,109 @@ void line(glm::vec3 start, glm::vec3 end) {
     }
 }
 
-void triangle(const glm::vec3& A, const glm::vec3& B, const glm::vec3& C) {
-    line(A, B);
-    line(B, C);
-    line(C, A);
+// Función para encontrar el mínimo de tres valores enteros
+int min3(int a, int b, int c) {
+    int minAB = a < b ? a : b;
+    return minAB < c ? minAB : c;
 }
+
+// Función para encontrar el máximo de tres valores enteros
+int max3(int a, int b, int c) {
+    int maxAB = a > b ? a : b;
+    return maxAB > c ? maxAB : c;
+}
+
+std::vector<Fragment> triangle(const glm::vec3& A, const glm::vec3& B, const glm::vec3& C) {
+    std::vector<Fragment> fragments;
+
+    // Calculate the minimum and maximum y-coordinates of the triangle
+    int minY = min3(static_cast<int>(A.y), static_cast<int>(B.y), static_cast<int>(C.y));
+    int maxY = max3(static_cast<int>(A.y), static_cast<int>(B.y), static_cast<int>(C.y));
+
+    // Calculate the minimum and maximum x-coordinates of the triangle
+    int minX = min3(static_cast<int>(A.x), static_cast<int>(B.x), static_cast<int>(C.x));
+    int maxX = max3(static_cast<int>(A.x), static_cast<int>(B.x), static_cast<int>(C.x));
+
+    // Rasterization algorithm (scanline)
+    for (int y = minY; y <= maxY; y++) {
+        for (int x = minX; x <= maxX; x++) {
+            glm::vec3 P(x + 0.5f, y + 0.5f, 0.0f);
+
+            // Calculate barycentric coordinates
+            float alpha = ((B.y - C.y) * (P.x - C.x) + (C.x - B.x) * (P.y - C.y)) /
+                          ((B.y - C.y) * (A.x - C.x) + (C.x - B.x) * (A.y - C.y));
+            float beta = ((C.y - A.y) * (P.x - C.x) + (A.x - C.x) * (P.y - C.y)) /
+                         ((B.y - C.y) * (A.x - C.x) + (C.x - B.x) * (A.y - C.y));
+            float gamma = 1.0f - alpha - beta;
+
+            if (alpha >= 0.0f && beta >= 0.0f && gamma >= 0.0f) {
+                fragments.push_back(Fragment(x, y));
+            }
+        }
+    }
+
+    return fragments;
+}
+
+Color fragmentShader(const Fragment& fragment) {
+    // Example: Assign a constant color to each fragment
+    Color fragColor(255, 0, 0, 255); // Red color with full opacity
+
+    // You can modify this function to implement more complex shading
+    // based on the fragment's attributes (e.g., depth, interpolated normals, texture coordinates, etc.)
+
+    return fragColor;
+}
+
 
 void render(const std::vector<glm::vec3>& vertices, const Uniforms& uniforms) {
     // 1. Vertex Shader
-    std::vector<Fragment> fragments;
+    std::vector<glm::vec3> transformedVertices;
     for (const auto& vertex : vertices) {
-        // Aquí aplicamos la transformación del vértice utilizando los uniforms
-        // Por ahora, simplemente agregamos el vértice a los fragmentos para su posterior procesamiento
-        fragments.push_back(Fragment(vertex));
+        // Aplicamos el vertex shader a cada vértice
+        glm::vec3 transformedVertex = vertexShader(vertex, uniforms);
+        transformedVertices.push_back(transformedVertex);
     }
 
     // 2. Primitive Assembly
-    // Por ahora, como estamos trabajando con triángulos, no es necesario hacer nada aquí,
-    // ya que los triángulos están formados por tres vértices y ya tenemos los fragmentos correspondientes.
+    std::vector<std::vector<glm::vec3>> triangles = primitiveAssembly(transformedVertices);
 
     // 3. Rasterization
-    // En este paso, normalmente se convierten los triángulos a píxeles en la pantalla,
-    // pero como ya tenemos los fragmentos, no es necesario hacer nada aquí por ahora.
+    std::vector<Fragment> fragments = rasterize(triangles);
 
     // 4. Fragment Shader
-    // Aquí aplicamos el fragment shader para procesar los fragmentos y determinar el color de cada píxel.
-    // Como por ahora solo tenemos la posición del fragmento, simplemente pintamos los píxeles en el framebuffer.
-
     for (const auto& fragment : fragments) {
+        Color fragColor = fragmentShader(fragment);
+        setColor(fragColor);
+
+        // Draw the pixel on the screen
         point(fragment.position.x, fragment.position.y);
     }
+
+    for (const auto& triangle : triangles) {
+        for (size_t i = 0; i < 3; ++i) {
+            point(static_cast<int>(triangle[i].x), static_cast<int>(triangle[i].y));
+        }
+    }
+
+    SDL_RenderPresent(renderer);
+}
+
+glm::mat4 createModelMatrix(const glm::vec3& translation, const glm::vec3& rotation, const glm::vec3& scale) {
+    glm::mat4 modelMatrix = glm::mat4(1.0f);
+
+    // Aplicar traslación
+    modelMatrix = glm::translate(modelMatrix, translation);
+
+    // Aplicar rotación
+    modelMatrix = glm::rotate(modelMatrix, glm::radians(rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+    modelMatrix = glm::rotate(modelMatrix, glm::radians(rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+    modelMatrix = glm::rotate(modelMatrix, glm::radians(rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+
+    // Aplicar escala
+    modelMatrix = glm::scale(modelMatrix, scale);
+
+    return modelMatrix;
 }
 
 // Función para leer el archivo .obj y cargar los vértices y caras
@@ -177,8 +225,32 @@ bool loadOBJ(const std::string& path, std::vector<glm::vec3>& out_vertices, std:
     return true;
 }
 
+glm::mat4 createViewMatrix(const Camera& camera) {
+    return glm::lookAt(camera.cameraPosition, camera.targetPosition, camera.upVector);
+}
 
+glm::mat4 createProjectionMatrix() {
+    float fovInDegrees = 45.0f;
+    float aspectRatio = static_cast<float>(SCREEN_WIDTH) / static_cast<float>(SCREEN_HEIGHT);
+    float nearClip = 0.1f;
+    float farClip = 100.0f;
 
+    return glm::perspective(glm::radians(fovInDegrees), aspectRatio, nearClip, farClip);
+}
+
+glm::mat4 createViewportMatrix() {
+    glm::mat4 viewport = glm::mat4(1.0f);
+
+    // Scale to adjust the aspect ratio
+    float scaleX = 2.0f / static_cast<float>(SCREEN_WIDTH);
+    float scaleY = 2.0f / static_cast<float>(SCREEN_HEIGHT);
+    viewport = glm::scale(viewport, glm::vec3(scaleX, scaleY, 1.0f));
+
+    // Translate to adjust the origin
+    viewport = glm::translate(viewport, glm::vec3(-1.0f, -1.0f, 0.0f));
+
+    return viewport;
+}
 
 std::vector<glm::vec3> setupVertexArray(const std::vector<glm::vec3>& vertices, const std::vector<Face>& faces) {
     std::vector<glm::vec3> vertexArray;
@@ -229,7 +301,7 @@ int main(int argc, char* argv[]) {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        render(vertices, uniforms);
+        render(vertices, uniforms); // Call the render function to render the scene
 
         SDL_RenderPresent(renderer);
     }

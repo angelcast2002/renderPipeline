@@ -8,6 +8,8 @@ set(SDL2_LIB_DIR C:/Users/caste/OneDrive/Documentos/SDL2-2.28.1/lib/x64)
 include_directories(${SDL2_INCLUDE_DIR})
 link_directories(${SDL2_LIB_DIR})
 
-add_executable(renderPipeline main.cpp)
+add_executable(renderPipeline main.cpp
+        shaders.hpp
+        shaders.cpp)
 
 target_link_libraries(${PROJECT_NAME} SDL2main SDL2)
