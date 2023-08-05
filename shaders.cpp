@@ -4,11 +4,16 @@
 
 glm::vec3 vertexShader(const glm::vec3& vertex, const Uniforms& uniforms) {
     // Apply transformations to the input vertex using the matrices from the uniforms
-    // For example, to apply the model, view, and projection transformations:
-    glm::vec4 transformedVertex = uniforms.projection * uniforms.view * uniforms.model * glm::vec4(vertex, 1.0f);
+    glm::vec4 clipSpaceVertex = uniforms.projection * uniforms.view * uniforms.model * glm::vec4(vertex, 1.0f);
 
-    // Convert the resulting homogeneous coordinate back to Cartesian coordinate
-    return glm::vec3(transformedVertex) / transformedVertex.w;
+    // Perspective divide
+    glm::vec3 ndcVertex = glm::vec3(clipSpaceVertex) / clipSpaceVertex.w;
+
+    // Apply the viewport transform
+    glm::vec4 screenVertex = uniforms.viewport * glm::vec4(ndcVertex, 1.0f);
+
+    // Return the transformed vertex as a vec3
+    return glm::vec3(screenVertex);
 }
 
 std::vector<std::vector<glm::vec3>> primitiveAssembly(

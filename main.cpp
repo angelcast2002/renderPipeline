@@ -21,7 +21,7 @@ std::string getParentDirectory(const std::string& path) {
 
 SDL_Window* window = nullptr;
 SDL_Renderer* renderer = nullptr;
-const int SCREEN_WIDTH = 640;
+const int SCREEN_WIDTH = 720;
 const int SCREEN_HEIGHT = 480;
 
 Color currentColor = {255, 255, 255, 255}; // Initially set to white
@@ -129,10 +129,13 @@ Color fragmentShader(const Fragment& fragment) {
 }
 
 
-void render(const std::vector<glm::vec3>& vertices, const Uniforms& uniforms) {
+void render(const std::vector<glm::vec3>& vertexArray, const Uniforms& uniforms) {
+    // Limpiamos el framebuffer con el color de fondo
+    clear();
+
     // 1. Vertex Shader
     std::vector<glm::vec3> transformedVertices;
-    for (const auto& vertex : vertices) {
+    for (const auto& vertex : vertexArray) {
         // Aplicamos el vertex shader a cada vértice
         glm::vec3 transformedVertex = vertexShader(vertex, uniforms);
         transformedVertices.push_back(transformedVertex);
@@ -146,19 +149,15 @@ void render(const std::vector<glm::vec3>& vertices, const Uniforms& uniforms) {
 
     // 4. Fragment Shader
     for (const auto& fragment : fragments) {
+        // En este caso, el fragment shader simplemente asigna un color constante a cada fragmento
         Color fragColor = fragmentShader(fragment);
         setColor(fragColor);
 
-        // Draw the pixel on the screen
+        // Dibujamos el píxel en la pantalla
         point(fragment.position.x, fragment.position.y);
     }
 
-    for (const auto& triangle : triangles) {
-        for (size_t i = 0; i < 3; ++i) {
-            point(static_cast<int>(triangle[i].x), static_cast<int>(triangle[i].y));
-        }
-    }
-
+    // Mostramos los cambios en pantalla
     SDL_RenderPresent(renderer);
 }
 
@@ -230,7 +229,7 @@ glm::mat4 createViewMatrix(const Camera& camera) {
 }
 
 glm::mat4 createProjectionMatrix() {
-    float fovInDegrees = 45.0f;
+    float fovInDegrees = 120.0f;
     float aspectRatio = static_cast<float>(SCREEN_WIDTH) / static_cast<float>(SCREEN_HEIGHT);
     float nearClip = 0.1f;
     float farClip = 100.0f;
@@ -273,21 +272,72 @@ std::vector<glm::vec3> setupVertexArray(const std::vector<glm::vec3>& vertices, 
 int main(int argc, char* argv[]) {
     init();
 
-    std::vector<glm::vec3> vertices = {
+    std::string currentPath = getCurrentPath();
+    std::string fileName = "naveLab3.obj";
+    std::string filePath = getParentDirectory(currentPath) + "\\" + fileName;
+
+    bool success = loadOBJ(filePath, vertices, faces);
+
+    if (!success) {
+        std::cerr << "Error: Unable to load OBJ file " << filePath << std::endl;
+        return -1;
+    }
+
+    std::vector<glm::vec3> vertexArray = setupVertexArray(vertices, faces);
+
+    /* vertices = {
             {300.0f, 200.0f, 0.0f},
             {400.0f, 400.0f, 0.0f},
             {500.0f, 200.0f, 0.0f}
-    };
+    };*/
 
+    // Definir la cámara en el mundo
+    Camera camera;
+    camera.cameraPosition = glm::vec3(0.0f, 0.0f, 5.0f); // Posición de la cámara
+    camera.targetPosition = glm::vec3(0.0f, 0.0f, 0.0f); // Punto al que la cámara apunta
+    camera.upVector = glm::vec3(0.0f, 1.0f, 0.0f);       // Vector que apunta hacia arriba
+
+    // Crear las matrices de modelo, vista, proyección y viewport
+    float multiplicador = 10000.0f;
+    float translationX = 170.0f;
+    float translationY = 40.0f;
+    float translationZ = 0.0f;
+
+    float rotationX = 0.0f;
+    float rotationY = 0.0f;
+    float rotationZ = 0.0f;
+
+    float scaleX = 10.0f;
+    float scaleY = 10.0f;
+    float scaleZ = 0.0f;
+
+    translationX = translationX * multiplicador;
+    translationY = translationY * multiplicador;
+    translationZ = translationZ * multiplicador;
+    /*
+    rotationX = rotationX * multiplicador;
+    rotationY = rotationY * multiplicador;
+    rotationZ = rotationZ * multiplicador;
+     */
+    scaleX = scaleX * multiplicador;
+    scaleY = scaleY * multiplicador;
+    scaleZ = scaleZ * multiplicador;
+
+    glm::vec3 translation(translationX, translationY, translationZ); // No se aplica traslación
+    glm::vec3 rotation(rotationX, rotationY, rotationZ);    // No se aplica rotación
+    glm::vec3 scale(scaleX, scaleY, scaleZ);       // No se aplica escala
+
+    glm::mat4 modelMatrix = createModelMatrix(translation, rotation, scale);
+    glm::mat4 viewMatrix = createViewMatrix(camera);
+    glm::mat4 projectionMatrix = createProjectionMatrix();
+    glm::mat4 viewportMatrix = createViewportMatrix();
+
+    // Crear la estructura de uniformes y asignar las matrices
     Uniforms uniforms;
-
-    glm::mat4 model = glm::mat4(1);
-    glm::mat4 view = glm::mat4(1);
-    glm::mat4 projection = glm::mat4(1);
-
-    uniforms.model = model;
-    uniforms.view = view;
-    uniforms.projection = projection;
+    uniforms.model = modelMatrix;
+    uniforms.view = viewMatrix;
+    uniforms.projection = projectionMatrix;
+    uniforms.viewport = viewportMatrix;
 
     bool running = true;
     while (running) {
@@ -301,7 +351,7 @@ int main(int argc, char* argv[]) {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        render(vertices, uniforms); // Call the render function to render the scene
+        render(vertexArray, uniforms); // Renderizar el triángulo con las matrices de transformación
 
         SDL_RenderPresent(renderer);
     }
